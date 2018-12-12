@@ -1,62 +1,43 @@
 ---
- - hosts: all
+  - hosts: zabbixC
+    port: 22
+    vars:
+      zserver: "172.25.250.254"
+      pacotes_zabbix:
+        - "zabbix-agent"
+        - "zabbix-sender"
+      pacotes_adicionais:
+        - "aide"
+        - "rsyslog"
+        - "openssh-server"
+        - "audit"
+        - "policycoreutils-python"
+        - "htop"
+        - "net-tools"
+        - "bash-completion"
+        - "bind-utils"
+        - "vim"
+        - "MySQL-python"
+        - "libsemanage-python"
+    tasks:
+    - name: INSTALANDO REPOSITORIO ZABBIX VERSAO 6
+      when: ( ansible_distribution == "CentOS" or ansible_distribution == 'RedHat' ) and ansible_distribution_version < '7'
+      yum: name=https://repo.zabbix.com/zabbix/4.0/rhel/6/x86_64/zabbix-release-4.0-1.el6.noarch.rpm state=present
 
-   tasks:
-   - name: Adiciona variaveis
-     include_vars: "./vars.yml"
+    - name: INSTALANDO REPOSITORIO ZABBIX VERSAO 7
+      when: ( ansible_distribution == "CentOS" or ansible_distribution == 'RedHat' ) and ansible_distribution_version > '7'
+      yum: name=https://repo.zabbix.com/zabbix/4.0/rhel/7/x86_64/zabbix-release-4.0-1.el7.noarch.rpm state=present
 
-   - name: DOWNLOAD REPOSITORIO ZABBIX 6
-     when: ( ansible_distribution == 'CentOS' or ansible_distribution == 'RedHat' ) and ansible_distribution_version > '6' < 7
-     get_url: url=https://repo.zabbix.com/zabbix/3.5/rhel/6/x86_64/zabbix-release-3.5-1.el6.noarch.rpm dest=/tmp/zabbix-release-3.5-1.el6.noarch.rpm mode=0777
+    - yum: name={{pacotes_zabbix}} state=present
+    - yum: name=epel-release state=present
+    - yum: name={{pacotes_adicionais}} state=present
 
-   - name: INSTALANDO REPOSITORIO ZABBIX VERSAO 6
-     when: ( ansible_distribution == "CentOS" or ansible_distribution == 'RedHat' ) and ansible_distribution_version > '6' < 7
-     yum: name=/tmp/zabbix-release-3.5-1.el6.noarch.rpm state=present
+    - name: COPIANDO o AGENT CONFIG
+      template: src=./files/zabbix_agentd.conf.j2 dest=/etc/zabbix/zabbix_agentd.conf owner=root group=root mode=0644 backup=yes
+      register: result
 
-   - name: INSTALANDO AGENTE VERSAO 6
-     when: ( ansible_distribution == "CentOS" or ansible_distribution == 'RedHat' ) and ansible_distribution_version > '6' < 7
-     yum: name=zabbix-agent state=latest
+    - service: name=zabbix-agent state=restarted enabled=yes
+      when: ( ansible_distribution == "CentOS" or ansible_distribution == 'RedHat' ) and ansible_distribution_version < '7'
 
-   - name: DOWNLOAD REPOSITORIO ZABBIX 7
-     when: ( ansible_distribution == 'CentOS' or ansible_distribution == 'RedHat' ) and ansible_distribution_version > 7
-     get_url: url=https://repo.zabbix.com/zabbix/3.5/rhel/7/x86_64/zabbix-release-3.5-1.el7.noarch.rpm dest=/tmp/zabbix-release-3.5-1.el7.noarch.rpm mode=0777
-
-   - name: INSTALANDO REPOSITORIO ZABBIX VERSAO 7
-     when: ( ansible_distribution == "CentOS" or ansible_distribution == 'RedHat' ) and ansible_distribution_version > 7
-     yum: name=/tmp/zabbix-release-3.5-1.el7.noarch.rpm state=present
-
-   - name: INSTALANDO AGENTE VERSAO 7
-     when: ( ansible_distribution == "CentOS" or ansible_distribution == 'RedHat' ) and ansible_distribution_version > 7
-     yum: name=zabbix-agent state=latest
-
-################################################
-
-   - name: COPIANDO o AGENT CONFIG
-     template: src=./files/zabbix_agentd.conf.j2 dest=/etc/zabbix_agentd.conf owner=root group=root mode=0644 backup=yes
-     register: result
-
-#   - name: Set hostname on conf file
-#     lineinfile:
-#      dest: /etc/zabbix_agentd.conf
-#      regexp: ^Hostname=.*
-#      insertafter: ^# Hostname=
-#      line: Hostname={{ ansible_hostname }}
-#
-#   - name: Set hostname on conf file
-#     lineinfile:
-#      dest: /etc/zabbix_agentd.conf
-#      regexp: ^Server=.*
-#      insertafter: ^# Server=
-#      line: Server={{ zserver }}
-#
-#   - name: Set hostname on conf file
-#     lineinfile:
-#      dest: /etc/zabbix_agentd.conf
-#      regexp: ^ServerActive=.*
-#      insertafter: ^# ServerActive=
-#      line: ServerActive={{ zserver }}
-
-   - name: REINICIANDO AGENTE ZABBIX
-     service: name=zabbix-agent state=restarted
-     when: result is changed
-
+    - systemd: state=restarted daemon_reload=yes enabled=yes name=zabbix-agent
+      when: ( ansible_distribution == "CentOS" or ansible_distribution == 'RedHat' ) and ansible_distribution_version > '7'
